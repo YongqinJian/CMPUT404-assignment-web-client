@@ -33,7 +33,21 @@ class HTTPResponse(object):
         self.body = body
 
 class HTTPClient(object):
-    #def get_host_port(self,url):
+    def get_host_port(self, url):
+        url_dict = {
+            'scheme': '',
+            'host': '',
+            'path': '',
+            'port': ''
+        }
+        url_string = urllib.parse.urlparse(url)
+        url_dict['scheme'], url_dict['host'], url_dict['port'], url_dict['path'] = url_string.scheme, url_string.hostname, url_string.port, url_string.path
+
+        if url_dict['path'] == '':
+            url_dict['path'] = '/'
+        if not url_dict['port']:
+            url_dict['port'] = 80
+        return url_dict
 
     def connect(self, host, port):
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -41,13 +55,13 @@ class HTTPClient(object):
         return None
 
     def get_code(self, data):
-        return None
+        return int(data.split()[1])
 
-    def get_headers(self,data):
-        return None
+    def get_headers(self, data):
+        return data.split('\r\n\r\n')[0]
 
     def get_body(self, data):
-        return None
+        return data.split('\r\n\r\n')[-1]
     
     def sendall(self, data):
         self.socket.sendall(data.encode('utf-8'))
@@ -68,13 +82,57 @@ class HTTPClient(object):
         return buffer.decode('utf-8')
 
     def GET(self, url, args=None):
-        code = 500
-        body = ""
-        return HTTPResponse(code, body)
+        try:
+            url_dict = self.get_host_port(url)
+        except Exception:
+            print('URL is invalid, please check and try again')
+            return
+        else:
+            host = url_dict['host']
+            port = url_dict['port']
+            path = url_dict['path']
+            self.connect(host, port)
+            content = "GET {} HTTP/1.1\r\nHost: {}\r\nConnection: close\r\n\r\n".format(path, host)
+            # print(content)
+            self.sendall(content)
+
+            response = self.recvall(self.socket)
+
+            code = self.get_code(response)
+
+            body = self.get_body(response)
+            # print(code, body)
+            self.close()
+            return HTTPResponse(code, body)
 
     def POST(self, url, args=None):
-        code = 500
-        body = ""
+        try:
+            url_dict = self.get_host_port(url)
+        except Exception:
+            print('URL is invalid, please check and try again')
+            return
+
+        host = url_dict['host']
+        port = url_dict['port']
+        path = url_dict['path']
+
+        self.connect(host, port)
+        if args:
+            args = urllib.parse.urlencode(args)
+        else:
+            args = ''
+
+        arg_length = len(args.encode('utf-8'))
+        # print(args,'\n',arg_length)
+
+        content = "POST {} HTTP/1.1\r\nHost: {}\r\nContent-Type: application/x-www-form-urlencoded\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}".format(path,host,arg_length,args)
+
+        self.sendall(content)
+
+        response = self.recvall(self.socket)
+        code = self.get_code(response)
+        body = self.get_body(response)
+        self.close()
         return HTTPResponse(code, body)
 
     def command(self, url, command="GET", args=None):
